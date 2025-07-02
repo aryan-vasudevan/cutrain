@@ -1,15 +1,27 @@
+from inference import InferencePipeline
 import cv2
+import os
+from dotenv import load_dotenv
 
-capture = cv2.VideoCapture(0)
+load_dotenv()
 
-while True:
-    # Get and display the frame
-    ret, frame = capture.read()
-    cv2.imshow('Live Camera Feed', frame)
+API_KEY = os.getenv("API_KEY")
+WORKSPACE_NAME = os.getenv("WORKSPACE_NAME")
+WORKFLOW_ID = os.getenv("WORKFLOW_ID")
 
-    # End the footage if "q" pressed
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+def my_sink(result, video_frame):
+    if result.get("keypoint_visualization"):
+        cv2.imshow("Workflow Image", result["keypoint_visualization"].numpy_image)
 
-# Close the capture
-cv2.destroyAllWindows()
+
+# Predict off live footage with inference pipeline
+pipeline = InferencePipeline.init_with_workflow(
+    api_key=API_KEY,
+    workspace_name=WORKSPACE_NAME,
+    workflow_id=WORKFLOW_ID,
+    video_reference=0,
+    max_fps=30,
+    on_prediction=my_sink
+)
+pipeline.start()
+pipeline.join()
