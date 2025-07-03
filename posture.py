@@ -1,45 +1,42 @@
 import math
-from typing import List, Dict, Tuple
+import statistics
 
-def finger_tilt_angle(J: Tuple[float, float], T: Tuple[float, float]) -> float:
-    """
-    Angle between the joint→tip vector and vertical axis.
-    0° = perfectly vertical; 90° = perfectly horizontal.
-    """
-    dx, dy = T[0] - J[0], T[1] - J[1]
-    return math.degrees(math.atan2(abs(dx), abs(dy)))
+def distance(p1, p2):
+    return math.hypot(p2[0] - p1[0], p2[1] - p1[1])
 
-def is_posture_correct(predictions: List[Dict]) -> bool:
-    """
-    Returns True if at least 3 out of 5 fingers on the LEFT hand
-    have tilt <= TILT_THRESHOLD (i.e. are sufficiently vertical/curled).
-    """
-    if not predictions:
-        return False
+def is_posture_correct(predictions):
+    
+    # Labels for everything
+    hand = max(predictions, key=lambda d: d["confidence"])
+    kps  = {kp["class"]: (kp["x"], kp["y"]) for kp in hand["keypoints"]}
 
-    # 1) Pick the left-hand detection
-    left = [d for d in predictions if d.get("class") == "left hand"]
-    if not left:
-        return False
-    hand = max(left, key=lambda d: d["confidence"])
+    w   = kps["w"]
+    j1, t1 = kps["j1"], kps["t1"]
+    j2, t2 = kps["j2"], kps["t2"]
+    j3     = kps["j3"]
+    j4, t4 = kps["j4"], kps["t4"]
+    j5, t5 = kps["j5"], kps["t5"]
+    
+    # Palm angle relative to horizontal
+    dx, dy     = j3[0] - w[0], j3[1] - w[1]
+    palm_angle = abs(math.degrees(math.atan2(dy, dx)))
 
-    # 2) Map keypoints
-    kps = {kp["class"]:(kp["x"], kp["y"]) for kp in hand["keypoints"]}
+    # Extension ratios for thumb & index only
+    ext_thumb = distance(t1, j1) / max(distance(j1, w), 1e-6)
+    ext_index = distance(t2, j2) / max(distance(j2, w), 1e-6)
 
-    # 3) Ensure we have all five knuckles & tips
-    for i in range(1,6):
-        if f"j{i}" not in kps or f"t{i}" not in kps:
-            return False
+    # Grip openness (thumb to index)
+    grip = distance(t1, t2)
 
-    # 4) Compute tilt for each finger
-    tilts = [
-        finger_tilt_angle(kps[f"j{i}"], kps[f"t{i}"])
-        for i in range(1,6)
-    ]
+    # Spread std dev (gpt)
+    joints = [j1, j2, j3, j4, j5]
+    angles = [math.degrees(math.atan2(j[1]-w[1], j[0]-w[0])) for j in joints]
+    spread_std = statistics.pstdev(angles)
 
-    # 5) Count how many are near‑vertical
-    TILT_THRESHOLD = 30.0  # degrees from vertical
-    near_vertical = sum(1 for angle in tilts if angle <= TILT_THRESHOLD)
+    # Updated thresholds (gpt)
+    palm_ok      = 30 < palm_angle < 150
+    extension_ok = 0.7 < ext_thumb < 1.3 and 0.7 < ext_index < 1.3
+    grip_ok      = 50 < grip < 130
+    spread_ok    = spread_std < 60
 
-    # 6) Posture is correct if ≥3 fingers are near‑vertical
-    return near_vertical >= 3
+    return palm_ok and extension_ok and grip_ok and spread_ok
