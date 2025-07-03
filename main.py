@@ -1,4 +1,6 @@
 from inference import InferencePipeline
+from feedback import display_feedback
+from posture import is_posture_correct  # Assuming your posture logic is in posture_check.py
 import cv2
 import os
 from dotenv import load_dotenv
@@ -12,12 +14,16 @@ WORKFLOW_ID = os.getenv("WORKFLOW_ID")
 pipeline = None
 
 def process(result, video_frame):
-    if result.get("keypoint_visualization"):
-        cv2.imshow("Workflow Image", result["keypoint_visualization"].numpy_image)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            pipeline.terminate()
+    frame = result["keypoint_visualization"].numpy_image
 
-# Initialize and start the pipeline
+    predictions = result.get("predictions", [])
+    correct_posture = is_posture_correct(predictions)
+    display_feedback(correct_posture, frame)
+
+    cv2.imshow("Workflow Image", frame)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        pipeline.terminate()
+
 pipeline = InferencePipeline.init_with_workflow(
     api_key=API_KEY,
     workspace_name=WORKSPACE_NAME,
